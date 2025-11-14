@@ -1,0 +1,86 @@
+#!/bin/bash
+set -euo pipefail
+
+# ================= Configuration =================
+LOG_FILE="/var/log/db_restore.log"
+exec > >(tee -a "$LOG_FILE") 2>&1
+
+DB="Your Database Name" #need to be changed
+BACKUP_DIR="/mnt/disk1/backups" #need to be changed
+TMP_DIR="/tmp/db_restore" #need to be changed
+USER="postgres"
+
+echo "=== [$(date)] Starting automatic restore process ==="
+
+# Find the latest backup
+LATEST_BACKUP=$(ls -t "$BACKUP_DIR"/databases_*.tar.gz | head -n 1)
+if [[ -z "$LATEST_BACKUP" ]]; then
+  echo "❌ ERROR: No backup file found in $BACKUP_DIR"
+  exit 1
+fi
+echo "Latest backup: $LATEST_BACKUP"
+
+# Prepare temporary folder
+rm -rf "$TMP_DIR"
+mkdir -p "$TMP_DIR"
+
+# Extract backup
+echo "Extracting $LATEST_BACKUP ..."
+tar -xzf "$LATEST_BACKUP" -C "$TMP_DIR" || {
+  echo "❌ ERROR: Failed to extract $LATEST_BACKUP"
+  exit 1
+}
+
+# Detect dump file
+DUMP_FILE=$(find "$TMP_DIR" -type f \( -name "*.dump" -o -name "*.sql" \) | head -n 1)
+if [[ ! -f "$DUMP_FILE" ]]; then
+  echo "❌ ERROR: No dump file found inside backup!"
+  exit 1
+fi
+echo "Dump file found: $DUMP_FILE"
+
+# Disconnect active connections
+echo "Disconnecting all connections to $DB..."
+sudo -u postgres psql -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='$DB';" || true
+
+# Drop existing database
+EXISTS=$(sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='$DB'")
+if [[ "$EXISTS" == "1" ]]; then
+  echo "Dropping existing database $DB..."
+  sudo -u postgres psql -c "DROP DATABASE \"$DB\";"
+fi
+
+# Create fresh database
+echo "Creating fresh database $DB..."
+sudo -u postgres psql -c "CREATE DATABASE \"$DB\" WITH OWNER = postgres ENCODING 'UTF8';"
+
+# Restore dump
+EXT="${DUMP_FILE##*.}"
+if [[ "$EXT" == "sql" ]]; then
+  echo "Restoring SQL dump using psql..."
+  sudo -u postgres psql -d "$DB" -f "$DUMP_FILE"
+elif [[ "$EXT" == "dump" ]]; then
+  echo "Restoring custom dump using pg_restore..."
+  sudo -u postgres pg_restore -v --disable-triggers -d "$DB" "$DUMP_FILE"
+else
+  echo "❌ ERROR: Unknown dump file format: $DUMP_FILE"
+  exit 1
+fi
+
+# Verify all tables
+echo "Verifying restored tables..."
+TABLES=$(sudo -u postgres psql -d "$DB" -Atc "SELECT tablename FROM pg_tables WHERE schemaname='public';")
+echo "Restored tables:"
+echo "$TABLES"
+
+# Optionally, check row count for each table
+echo "Checking row counts:"
+for tbl in $TABLES; do
+  COUNT=$(sudo -u postgres psql -d "$DB" -tAc "SELECT COUNT(*) FROM \"$tbl\";")
+  echo "Table $tbl has $COUNT rows"
+done
+
+echo "✅ Restore completed successfully for $DB at $(date)"
+
+~
+Restore postgress automatically
