@@ -7,14 +7,14 @@ LOG_FILE="/var/log/db_backup_${STAMP}.log"
 exec > >(tee -a "$LOG_FILE") 2>&1
 
 # === Configuration ===
-DB="Your database name" #
+DB="Your database name" #need to be changed
 BACKUP_PATH="/home/backups"
 HOST="127.0.0.1"
 PORT="5432"
-USER="postgres"
-REMOTE_HOST="bdr.khedmatazma.com"
+USER="USer Name" #need to be changed
+REMOTE_HOST="HostName"  #need to be changed
 REMOTE_PATH="/mnt/disk1/backups"
-REMOTE_USER="root"
+REMOTE_USER="root" #need to be changed
 
 # === Environment for cron ===
 export PATH="/usr/local/bin:/usr/bin:/bin"
@@ -25,7 +25,7 @@ mkdir -p "$BACKUP_PATH/$STAMP"
 
 # === Create .pgpass if not exists ===
 if [[ ! -f "$PGPASSFILE" ]]; then
-  echo "${HOST}:${PORT}:*:${USER}:D7sWFTmz1KmOun1kQ8iJvo/mtwFa7h+2PAUC1iry" > "$PGPASSFILE"
+  echo "${HOST}:${PORT}:*:${USER}:D7sWFTmz1KmOun1kQ8iJvo/mtwFa7h+2PAUC1ir" > "$PGPASSFILE"  #need to be changed
   chmod 600 "$PGPASSFILE"
 fi
 
